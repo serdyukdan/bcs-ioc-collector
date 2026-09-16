@@ -60,11 +60,10 @@ class NewNormalizationTests(unittest.TestCase):
 
 
 class SourceParserTests(unittest.TestCase):
-    def test_phishtank_filters_unverified_and_offline_and_ignores_metadata_urls(self):
-        result = parse_feed((FIXTURES / "phishtank.csv").read_text(), "phishtank")
-        self.assertEqual((len(result.indicators), result.duplicates, result.skipped), (2, 1, 2))
-        self.assertEqual({item.type for item in result.indicators}, {"url"})
-        self.assertFalse(any("report" in item.value for item in result.indicators))
+    def test_cins_ip_list_deduplicates_without_changing_type(self):
+        result = parse_feed((FIXTURES / "cins_army.txt").read_text(), "ip")
+        self.assertEqual((len(result.indicators), result.duplicates, result.invalid), (4, 1, 0))
+        self.assertEqual({item.type for item in result.indicators}, {"ipv4"})
 
     def test_threatview_typed_lists_normalize_and_deduplicate(self):
         for file, kind, unique in (("threatview_ip.txt", "ip", 4),
@@ -80,20 +79,10 @@ class SourceParserTests(unittest.TestCase):
         self.assertEqual({item.type for item in result.indicators}, {"ipv4", "ipv6"})
 
     def test_empty_or_error_responses_cannot_erase_a_snapshot(self):
-        for kind in ("ip", "domain", "md5", "phishtank"):
+        for kind in ("ip", "domain", "md5"):
             for text in ("", "# temporary maintenance", '<html>error</html>', '{"error":"denied"}'):
                 with self.subTest(kind=kind, text=text), self.assertRaises(FeedError):
                     parse_feed(text, kind)
-
-    def test_broken_csv_does_not_clear_snapshot(self):
-        for text in ("url,verified\nhttps://example.test/,yes\n", "url,verified,online\na,yes\n",
-                     'url,verified,online\n"unterminated,yes,yes', "url,verified,online\nhttps://x.test/,maybe,yes"):
-            with self.subTest(text=text), self.assertRaises(FeedError):
-                parse_feed(text, "phishtank")
-
-    def test_standard_csv_quoted_commas_in_urls(self):
-        parsed = parse_feed('url,verified,online\n"https://example.test/?a=1,2",yes,yes\n', "phishtank")
-        self.assertEqual(next(iter(parsed.indicators)).value, "https://example.test/?a=1,2")
 
 
 class PublicSourceTests(unittest.TestCase):
@@ -111,9 +100,10 @@ class PublicSourceTests(unittest.TestCase):
                 self.assertEqual(result, 0)
                 self.assertEqual(download.call_count, 5)
             with Database(path, readonly=True) as db:
-                self.assertEqual(db.stats()["total"], 11)
+                self.assertEqual(db.stats()["total"], 10)
+                self.assertEqual(db.stats()["levels"], {"Critical": 1, "High": 4, "Medium": 5})
                 statuses = {source["id"]: source["status"] for source in db.stats()["sources"]}
-                self.assertEqual(statuses, {"phishtank": "ok", "threatview": "ok", "blocklist_de": "ok"})
+                self.assertEqual(statuses, {"cins_army": "ok", "threatview": "ok", "blocklist_de": "ok"})
 
     def test_key_not_leaked_in_http_network_errors_or_retry_logs(self):
         key = "secret-for-test"
@@ -134,15 +124,12 @@ class PublicSourceTests(unittest.TestCase):
             with self.assertRaises(FeedError):
                 handler.redirect_request(request, None, 302, "redirect", {}, target)
 
-    def test_phishtank_can_use_its_own_https_download_cdn(self):
+    def test_same_origin_https_redirect_is_allowed(self):
         handler = SafeRedirectHandler()
-        request = Request("https://data.phishtank.com/data/online-valid.csv")
-        target = "https://cdn.phishtank.com/datadumps/verified_online.csv?Expires=1&Signature=test"
+        request = Request("https://example.test/feeds/current.txt")
+        target = "https://example.test/feeds/latest.txt"
         redirect = handler.redirect_request(request, None, 302, "redirect", {}, target)
         self.assertEqual(redirect.full_url, target)
-        request.add_header("Auth-Key", "test-key")
-        with self.assertRaises(FeedError):
-            handler.redirect_request(request, None, 302, "redirect", {}, target)
 
 
 if __name__ == "__main__":

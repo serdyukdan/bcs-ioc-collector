@@ -19,9 +19,9 @@ class Source:
 
 
 SOURCES = (
-    Source("phishtank", "PhishTank", (
-        Feed("online-valid", "https://data.phishtank.com/data/online-valid.csv",
-             "phishtank", "phishtank.csv"),
+    Source("cins_army", "CINS Army", (
+        Feed("ip", "https://cinsscore.com/list/ci-badguys.txt",
+             "ip", "cins_army.txt"),
     )),
     Source("threatview", "ThreatView", (
         Feed("ip", "https://threatview.io/Downloads/IP-High-Confidence-Feed.txt",

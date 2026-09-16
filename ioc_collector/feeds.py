@@ -1,11 +1,9 @@
 """Bounded HTTPS requests and strict parsers for each source's actual format."""
 
-import csv
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import http.client
-import io
 import logging
 import ssl
 import time
@@ -27,12 +25,7 @@ class SafeRedirectHandler(HTTPRedirectHandler):
     def redirect_request(self, request, fp, code, msg, headers, newurl):
         old, new = urlsplit(request.full_url), urlsplit(newurl)
         same_origin = (new.hostname, new.port or 443) == (old.hostname, old.port or 443)
-        # PhishTank serves its published download via its own signed CDN URL.
-        phishtank_cdn = (old.hostname == "data.phishtank.com" and new.hostname == "cdn.phishtank.com"
-                        and (old.port or 443) == (new.port or 443) == 443
-                        and new.path.startswith("/datadumps/") and request.get_method() in {"GET", "HEAD"}
-                        and not request.has_header("Auth-key"))
-        if new.scheme != "https" or not (same_origin or phishtank_cdn):
+        if new.scheme != "https" or not same_origin:
             raise FeedError("Cross-origin or non-HTTPS feed redirect rejected")
         return super().redirect_request(request, fp, code, msg, headers, newurl)
 
@@ -46,14 +39,11 @@ class ParsedFeed:
     rows: int
     invalid: int
     duplicates: int
-    skipped: int = 0
 
 
 def parse_feed(text: str, kind: str) -> ParsedFeed:
     if any(tag in text[:512].lower() for tag in ("<!doctype html", "<html", "<body")):
         raise FeedError("HTML received instead of a feed")
-    if kind == "phishtank":
-        return parse_phishtank(text)
     candidates = []
     for line in text.lstrip("\ufeff").splitlines():
         line = line.strip()
@@ -63,7 +53,7 @@ def parse_feed(text: str, kind: str) -> ParsedFeed:
     return _normalize_candidates(candidates)
 
 
-def _normalize_candidates(candidates: list[tuple[str, str]], *, skipped: int = 0) -> ParsedFeed:
+def _normalize_candidates(candidates: list[tuple[str, str]]) -> ParsedFeed:
     indicators: set[Indicator] = set()
     rows = invalid = duplicates = 0
     for value, kind in candidates:
@@ -82,48 +72,7 @@ def _normalize_candidates(candidates: list[tuple[str, str]], *, skipped: int = 0
         raise FeedError("Empty feed or no valid indicators; previous snapshot preserved")
     if rows and invalid / rows > 0.10:
         raise FeedError(f"Too many invalid rows: {invalid}/{rows} (>10%)")
-    return ParsedFeed(indicators, rows, invalid, duplicates, skipped)
-
-
-def _csv_records(text: str, required: set[str]) -> list[dict]:
-    """Read a strict CSV table; metadata columns are not IoC data."""
-    stream = io.StringIO(text.lstrip("\ufeff"), newline="")
-    header = None
-    for line in stream:
-        candidate = line.lstrip().removeprefix("#").strip()
-        fields = next(csv.reader([candidate], skipinitialspace=True, strict=True), [])
-        if required <= set(fields):
-            header = fields
-            break
-        if line.strip() and not line.lstrip().startswith("#"):
-            raise FeedError("CSV header does not match the source format")
-    if header is None or len(header) != len(set(header)):
-        raise FeedError("Missing or duplicated CSV header")
-    records = []
-    for values in csv.reader(stream, skipinitialspace=True, strict=True):
-        if not values or (values[0].lstrip().startswith("#") and len(values) == 1):
-            continue
-        if len(values) != len(header):
-            raise FeedError("CSV row has an unexpected number of columns")
-        records.append(dict(zip(header, values)))
-    return records
-
-
-def parse_phishtank(text: str) -> ParsedFeed:
-    candidates = []
-    skipped = 0
-    try:
-        records = _csv_records(text, {"url", "verified", "online"})
-        for row in records:
-            if row["verified"].lower() not in {"yes", "no"} or row["online"].lower() not in {"yes", "no"}:
-                raise FeedError("Invalid PhishTank verification/status field")
-            if row["verified"].lower() != "yes" or row["online"].lower() != "yes":
-                skipped += 1
-                continue
-            candidates.append((row["url"], "url"))
-        return _normalize_candidates(candidates, skipped=skipped)
-    except csv.Error:
-        raise FeedError("Malformed PhishTank CSV") from None
+    return ParsedFeed(indicators, rows, invalid, duplicates)
 
 
 def _retry_delay(retry_after: str | None, attempt: int) -> float:
@@ -150,7 +99,7 @@ def download_text(url: str, *, timeout: float = 20, retries: int = 2,
     # or arbitrary exception text returned by HTTP/proxy libraries.
     label = urlsplit(url).hostname or "feed server"
     request = Request(url, data=data, headers={
-        "User-Agent": "BCS-IoC-Collector/2.0",
+        "User-Agent": "Public-IoC-Collector/1.0",
         "Accept": "application/json, text/csv, text/plain",
         "Accept-Encoding": "identity",
         **(headers or {}),

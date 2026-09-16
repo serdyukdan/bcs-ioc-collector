@@ -22,10 +22,10 @@ class CollectionTests(unittest.TestCase):
         for _ in range(2):
             result = collect(self.db, demo=True)
             self.assertEqual(result.exit_code, 0)
-            self.assertEqual(self.db.stats()["levels"], {"Critical": 0, "High": 3, "Medium": 8})
-            self.assertEqual(self.db.stats()["total"], 11)
-        ip = self.db.query(level="High")[0]
-        self.assertEqual(ip["sources"], ["blocklist_de", "threatview"])
+            self.assertEqual(self.db.stats()["levels"], {"Critical": 1, "High": 4, "Medium": 5})
+            self.assertEqual(self.db.stats()["total"], 10)
+        ip = self.db.query(level="Critical")[0]
+        self.assertEqual(ip["sources"], ["blocklist_de", "cins_army", "threatview"])
         self.assertEqual(ip["value"], "192.0.2.10")
 
     def test_all_three_priority_levels_without_fabricating_provider_data(self):
@@ -38,20 +38,21 @@ class CollectionTests(unittest.TestCase):
         collect(self.db, demo=True)
         self.db.replace_snapshot(SOURCES[1], [normalize("bad.example")], now="2026-01-02T00:00:00Z")
         high = {item["value"]: item for item in self.db.query(level="High")}
-        self.assertEqual(high, {})
+        self.assertEqual(set(high), {"192.0.2.10", "198.51.100.4"})
         medium = {item["value"]: item for item in self.db.query(level="Medium")}
-        self.assertEqual(medium["192.0.2.10"]["source_count"], 1)
-        self.assertEqual(medium["192.0.2.10"]["updated_at"], "2026-01-02T00:00:00Z")
+        self.assertEqual(high["192.0.2.10"]["source_count"], 2)
+        self.assertEqual(high["192.0.2.10"]["updated_at"], "2026-01-02T00:00:00Z")
+        self.assertNotIn("c2.example", medium)
         self.assertEqual(self.db.stats()["total"], 7)
         self.assertEqual(self.db.stats()["levels"]["Critical"], 0)
 
     def test_failure_preserves_good_snapshot_and_timestamp(self):
         collect(self.db, demo=True)
-        before = self.db.query(level="High")[0]
+        before = self.db.query(level="Critical")[0]
         def failing_loader(feed):
             raise FeedError("temporary unavailability")
         result = collect(self.db, sources=[SOURCES[2]], loader=failing_loader)
-        after = self.db.query(level="High")[0]
+        after = self.db.query(level="Critical")[0]
         self.assertEqual(result.exit_code, 1)
         self.assertEqual((after["source_count"], after["updated_at"]),
                          (before["source_count"], before["updated_at"]))
@@ -59,7 +60,7 @@ class CollectionTests(unittest.TestCase):
 
     def test_failed_first_source_does_not_stop_other_sources(self):
         def loader(feed):
-            if feed.kind == "phishtank":
+            if feed == SOURCES[0].feeds[0]:
                 raise FeedError("unavailable")
             return (Path(__file__).resolve().parent.parent / "examples" / "feeds" / feed.demo_file).read_text(encoding="utf-8")
         result = collect(self.db, loader=loader)
@@ -126,7 +127,7 @@ class CollectionTests(unittest.TestCase):
     def test_sql_value_is_parameterized(self):
         collect(self.db, demo=True)
         self.assertEqual(self.db.query(level="High' OR 1=1 --"), [])
-        self.assertEqual(self.db.stats()["total"], 11)
+        self.assertEqual(self.db.stats()["total"], 10)
 
 
 if __name__ == "__main__":

@@ -3,94 +3,92 @@ SYNTHETIC OFFLINE DEMO. No network requests.
 $ python collect.py --demo
 Sources: ok=3 failed=0
 Database: data\demo.sqlite3 (demo)
-Total: 11
-Critical=0 High=3 Medium=8
+Total: 10
+Critical=1 High=4 Medium=5
 stderr:
 WARNING DEMO: synthetic indicators, no network requests
-INFO phishtank/online-valid: values=3 unique=2 invalid=0 skipped=2
-INFO phishtank: OK unique=2 values=3 duplicates=1 invalid=0
-INFO threatview/ip: values=5 unique=4 invalid=0 skipped=0
-INFO threatview/domain: values=3 unique=2 invalid=0 skipped=0
-INFO threatview/md5: values=3 unique=2 invalid=0 skipped=0
+INFO cins_army/ip: values=5 unique=4 invalid=0
+INFO cins_army: OK unique=4 values=5 duplicates=1 invalid=0
+INFO threatview/ip: values=5 unique=4 invalid=0
+INFO threatview/domain: values=3 unique=2 invalid=0
+INFO threatview/md5: values=3 unique=2 invalid=0
 INFO threatview: OK unique=8 values=11 duplicates=3 invalid=0
-INFO blocklist_de/all: values=4 unique=4 invalid=0 skipped=0
+INFO blocklist_de/all: values=4 unique=4 invalid=0
 INFO blocklist_de: OK unique=4 values=4 duplicates=0 invalid=0
 
-$ python ioc.py --db data/demo.sqlite3 --level high
-value       | type | source_count | level | sources                 | updated_at
-------------+------+--------------+-------+-------------------------+----------------------------
-192.0.2.10  | ipv4 | 2            | High  | blocklist_de,threatview | 2026-09-16T19:11:14.245375Z
-192.0.2.20  | ipv4 | 2            | High  | blocklist_de,threatview | 2026-09-16T19:11:14.245375Z
-2001:db8::1 | ipv6 | 2            | High  | blocklist_de,threatview | 2026-09-16T19:11:14.245375Z
+$ python ioc.py --db data/demo.sqlite3 --level critical
+value      | type | source_count | level    | sources                           | updated_at
+-----------+------+--------------+----------+-----------------------------------+----------------------------
+192.0.2.10 | ipv4 | 3            | Critical | blocklist_de,cins_army,threatview | 2026-09-16T19:56:51.214784Z
 stderr:
 WARNING DEMO database: synthetic indicators
-INFO Shown: 3 of 3 High indicators (offset=0)
+INFO Shown: 1 of 1 Critical indicators (offset=0)
+
+$ python ioc.py --db data/demo.sqlite3 --level high
+value        | type | source_count | level | sources                 | updated_at
+-------------+------+--------------+-------+-------------------------+----------------------------
+192.0.2.20   | ipv4 | 2            | High  | blocklist_de,threatview | 2026-09-16T19:56:51.214784Z
+198.51.100.4 | ipv4 | 2            | High  | blocklist_de,cins_army  | 2026-09-16T19:56:51.214784Z
+203.0.113.7  | ipv4 | 2            | High  | cins_army,threatview    | 2026-09-16T19:56:51.211438Z
+2001:db8::1  | ipv6 | 2            | High  | blocklist_de,threatview | 2026-09-16T19:56:51.214784Z
+stderr:
+WARNING DEMO database: synthetic indicators
+INFO Shown: 4 of 4 High indicators (offset=0)
 
 $ python ioc.py --db data/demo.sqlite3 --level medium
-value                             | type   | source_count | level  | sources      | updated_at
-----------------------------------+--------+--------------+--------+--------------+----------------------------
-c2.example                        | domain | 1            | Medium | threatview   | 2026-09-16T19:11:14.242370Z
-payload.example                   | domain | 1            | Medium | threatview   | 2026-09-16T19:11:14.242370Z
-198.51.100.4                      | ipv4   | 1            | Medium | blocklist_de | 2026-09-16T19:11:14.245375Z
-203.0.113.7                       | ipv4   | 1            | Medium | threatview   | 2026-09-16T19:11:14.242370Z
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  | md5    | 1            | Medium | threatview   | 2026-09-16T19:11:14.242370Z
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  | md5    | 1            | Medium | threatview   | 2026-09-16T19:11:14.242370Z
-https://billing.example/pay       | url    | 1            | Medium | phishtank    | 2026-09-16T19:11:14.235115Z
-https://login.example/Account?A=1 | url    | 1            | Medium | phishtank    | 2026-09-16T19:11:14.235115Z
+value                            | type   | source_count | level  | sources    | updated_at
+---------------------------------+--------+--------------+--------+------------+----------------------------
+c2.example                       | domain | 1            | Medium | threatview | 2026-09-16T19:56:51.211438Z
+payload.example                  | domain | 1            | Medium | threatview | 2026-09-16T19:56:51.211438Z
+198.51.100.99                    | ipv4   | 1            | Medium | cins_army  | 2026-09-16T19:56:51.201738Z
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | md5    | 1            | Medium | threatview | 2026-09-16T19:56:51.211438Z
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb | md5    | 1            | Medium | threatview | 2026-09-16T19:56:51.211438Z
 stderr:
 WARNING DEMO database: synthetic indicators
-INFO Shown: 8 of 8 Medium indicators (offset=0)
-
-$ python ioc.py --db data/demo.sqlite3 --level critical
-value | type | source_count | level | sources | updated_at
-------+------+--------------+-------+---------+-----------
-stderr:
-WARNING DEMO database: synthetic indicators
-INFO Shown: 0 of 0 Critical indicators (offset=0)
+INFO Shown: 5 of 5 Medium indicators (offset=0)
 
 $ python ioc.py --db data/demo.sqlite3 --stats
 {
   "dataset": "demo",
-  "total": 11,
+  "total": 10,
   "levels": {
-    "Critical": 0,
-    "High": 3,
-    "Medium": 8
+    "Critical": 1,
+    "High": 4,
+    "Medium": 5
   },
   "types": {
     "domain": 2,
-    "ipv4": 4,
+    "ipv4": 5,
     "ipv6": 1,
-    "md5": 2,
-    "url": 2
+    "md5": 2
   },
   "sources": [
     {
       "id": "blocklist_de",
       "name": "Blocklist.de",
       "status": "ok",
-      "last_attempt": "2026-09-16T19:11:14.245375Z",
-      "last_success": "2026-09-16T19:11:14.245375Z",
+      "last_attempt": "2026-09-16T19:56:51.214784Z",
+      "last_success": "2026-09-16T19:56:51.214784Z",
       "error": null,
       "valid_count": 4,
       "invalid_count": 0
     },
     {
-      "id": "phishtank",
-      "name": "PhishTank",
+      "id": "cins_army",
+      "name": "CINS Army",
       "status": "ok",
-      "last_attempt": "2026-09-16T19:11:14.235115Z",
-      "last_success": "2026-09-16T19:11:14.235115Z",
+      "last_attempt": "2026-09-16T19:56:51.201738Z",
+      "last_success": "2026-09-16T19:56:51.201738Z",
       "error": null,
-      "valid_count": 2,
+      "valid_count": 4,
       "invalid_count": 0
     },
     {
       "id": "threatview",
       "name": "ThreatView",
       "status": "ok",
-      "last_attempt": "2026-09-16T19:11:14.242370Z",
-      "last_success": "2026-09-16T19:11:14.242370Z",
+      "last_attempt": "2026-09-16T19:56:51.211438Z",
+      "last_success": "2026-09-16T19:56:51.211438Z",
       "error": null,
       "valid_count": 8,
       "invalid_count": 0

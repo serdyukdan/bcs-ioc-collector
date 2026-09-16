@@ -1,45 +1,44 @@
 {
   "dataset": "live",
-  "total": 642376,
+  "total": 578831,
   "levels": {
-    "Critical": 0,
-    "High": 6099,
-    "Medium": 636277
+    "Critical": 56,
+    "High": 8706,
+    "Medium": 570069
   },
   "types": {
     "domain": 527040,
-    "ipv4": 37340,
-    "ipv6": 748,
-    "md5": 1371,
-    "url": 75877
+    "ipv4": 49669,
+    "ipv6": 751,
+    "md5": 1371
   },
   "sources": [
     {
       "id": "blocklist_de",
       "name": "Blocklist.de",
       "status": "ok",
-      "last_attempt": "2026-09-16T19:07:14.260116Z",
-      "last_success": "2026-09-16T19:07:14.260116Z",
+      "last_attempt": "2026-09-16T19:55:58.712252Z",
+      "last_success": "2026-09-16T19:55:58.712252Z",
       "error": null,
-      "valid_count": 26372,
+      "valid_count": 26423,
       "invalid_count": 0
     },
     {
-      "id": "phishtank",
-      "name": "PhishTank",
+      "id": "cins_army",
+      "name": "CINS Army",
       "status": "ok",
-      "last_attempt": "2026-09-16T19:05:02.090292Z",
-      "last_success": "2026-09-16T19:05:02.090292Z",
+      "last_attempt": "2026-09-16T19:54:19.229909Z",
+      "last_success": "2026-09-16T19:54:19.229909Z",
       "error": null,
-      "valid_count": 75877,
-      "invalid_count": 35
+      "valid_count": 15000,
+      "invalid_count": 0
     },
     {
       "id": "threatview",
       "name": "ThreatView",
       "status": "ok",
-      "last_attempt": "2026-09-16T19:06:38.614779Z",
-      "last_success": "2026-09-16T19:06:38.614779Z",
+      "last_attempt": "2026-09-16T19:55:35.784911Z",
+      "last_success": "2026-09-16T19:55:35.784911Z",
       "error": null,
       "valid_count": 546226,
       "invalid_count": 55

@@ -26,7 +26,7 @@ class CLITests(unittest.TestCase):
         result = self.run_cli("ioc.py", "--level", "hIgH", "--format", "json")
         self.assertEqual(result.returncode, 0, result.stderr)
         rows = json.loads(result.stdout)
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 4)
         self.assertTrue(all(row["source_count"] == 2 for row in rows))
         self.assertEqual({row["type"] for row in rows}, {"ipv4", "ipv6"})
         self.assertNotIn("WARNING", result.stdout)
@@ -37,15 +37,20 @@ class CLITests(unittest.TestCase):
         result = self.run_cli("ioc.py", "--level", "high", "--format", "csv", "--output", str(output))
         self.assertEqual(result.returncode, 0, result.stderr)
         text = output.read_text(encoding="utf-8")
-        self.assertIn("192.0.2.10", text)
+        self.assertIn("192.0.2.20", text)
         self.assertIn("2001:db8::1", text)
-        self.assertEqual(len(text.splitlines()), 4)
+        self.assertEqual(len(text.splitlines()), 5)
 
-    def test_critical_can_be_empty_with_disjoint_provider_types(self):
+    def test_critical_has_exactly_three_distinct_sources(self):
         self.run_cli("collect.py", "--demo")
         result = self.run_cli("ioc.py", "--level", "critical", "--format", "json")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout), [])
+        rows = json.loads(result.stdout)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["value"], "192.0.2.10")
+        self.assertEqual(rows[0]["type"], "ipv4")
+        self.assertEqual(rows[0]["source_count"], 3)
+        self.assertEqual(rows[0]["sources"], ["blocklist_de", "cins_army", "threatview"])
 
     def test_missing_database_does_not_create_file(self):
         result = self.run_cli("ioc.py", "--level", "medium")

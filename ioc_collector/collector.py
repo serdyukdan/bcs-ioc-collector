@@ -44,9 +44,9 @@ def collect(db: Database, *, sources: Iterable[Source] = SOURCES,
                 indicators.update(parsed.indicators)
                 invalid += parsed.invalid
                 rows += parsed.rows
-                LOGGER.info("%s/%s: values=%d unique=%d invalid=%d skipped=%d",
+                LOGGER.info("%s/%s: values=%d unique=%d invalid=%d",
                             source.id, feed.name, parsed.rows, len(parsed.indicators),
-                            parsed.invalid, parsed.skipped)
+                            parsed.invalid)
             if not source.feeds:
                 raise FeedError("Source has no feeds configured")
             db.replace_snapshot(source, indicators, invalid=invalid)
