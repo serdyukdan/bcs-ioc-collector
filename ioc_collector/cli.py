@@ -6,8 +6,10 @@ import json
 import logging
 import math
 from pathlib import Path
+import shutil
 import sqlite3
 import sys
+import textwrap
 from typing import TextIO
 
 from .collector import collect
@@ -64,6 +66,36 @@ def collect_main(argv: list[str] | None = None) -> int:
         return 130
 
 
+def write_table(rows: list[dict], output: TextIO) -> None:
+    cells = [[",".join(item[key]) if key == "sources" else str(item[key])
+              for key in FIELDS] for item in rows]
+    widths = [max(len(name), *(len(row[index]) for row in cells))
+              if cells else len(name) for index, name in enumerate(FIELDS)]
+    if output.isatty():
+        available = shutil.get_terminal_size(fallback=(120, 24)).columns
+        # Keep the header legible; wrap long values inside their own column.
+        while sum(widths) + 3 * (len(FIELDS) - 1) > available:
+            shrinkable = [index for index, name in enumerate(FIELDS)
+                          if widths[index] > len(name)]
+            if not shrinkable:
+                break
+            index = max(shrinkable, key=lambda index: widths[index])
+            widths[index] -= 1
+    separator = "-+-".join("-" * width for width in widths)
+    output.write(" | ".join(name.ljust(width) for name, width in zip(FIELDS, widths)) + "\n")
+    output.write(separator + "\n")
+    for row in cells:
+        wrapped = [textwrap.wrap(value, width=width, break_on_hyphens=False) or [""]
+                   for value, width in zip(row, widths)]
+        height = max(map(len, wrapped))
+        for line_index in range(height):
+            output.write(" | ".join(
+                (lines[line_index] if line_index < len(lines) else "").ljust(width)
+                for lines, width in zip(wrapped, widths)) + "\n")
+        if height > 1:
+            output.write(separator + "\n")
+
+
 def write_rows(rows: list[dict], format_name: str, output: TextIO) -> None:
     if format_name == "json":
         json.dump(rows, output, ensure_ascii=False, indent=2)
@@ -78,11 +110,7 @@ def write_rows(rows: list[dict], format_name: str, output: TextIO) -> None:
         for item in rows:
             output.write(item["value"] + "\n")
     else:
-        output.write("\t".join(FIELDS) + "\n")
-        for item in rows:
-            output.write("\t".join(
-                ",".join(item[key]) if key == "sources" else str(item[key])
-                for key in FIELDS) + "\n")
+        write_table(rows, output)
 
 
 def query_main(argv: list[str] | None = None) -> int:
