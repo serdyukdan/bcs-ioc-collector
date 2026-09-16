@@ -22,28 +22,36 @@ class CollectionTests(unittest.TestCase):
         for _ in range(2):
             result = collect(self.db, demo=True)
             self.assertEqual(result.exit_code, 0)
-            self.assertEqual(self.db.stats()["levels"], {"Critical": 1, "High": 2, "Medium": 4})
-            self.assertEqual(self.db.stats()["total"], 7)
-        critical = self.db.query(level="Critical")[0]
-        self.assertEqual(critical["sources"], ["blocklist_de", "cins_army", "threatview"])
-        self.assertEqual(critical["value"], "192.0.2.10")
+            self.assertEqual(self.db.stats()["levels"], {"Critical": 0, "High": 3, "Medium": 8})
+            self.assertEqual(self.db.stats()["total"], 11)
+        url = next(row for row in self.db.query(level="High") if row["type"] == "url")
+        self.assertEqual(url["sources"], ["phishtank", "threatfox"])
+        self.assertEqual(url["value"], "https://login.example/Account?A=1")
+
+    def test_all_three_priority_levels_without_fabricating_provider_data(self):
+        indicator = normalize("192.0.2.10")
+        for count, level in enumerate(("Medium", "High", "Critical"), 1):
+            self.db.replace_snapshot(Source(f"test_{count}", "Synthetic test source", ()), [indicator])
+            self.assertEqual(self.db.query(level=level)[0]["source_count"], count)
 
     def test_snapshot_removal_lowers_priority_and_deletes_orphans(self):
         collect(self.db, demo=True)
-        self.db.replace_snapshot(SOURCES[2], [normalize("bad.example")], now="2026-01-02T00:00:00Z")
+        self.db.replace_snapshot(SOURCES[1], [normalize("bad.example")], now="2026-01-02T00:00:00Z")
         high = {item["value"]: item for item in self.db.query(level="High")}
-        self.assertEqual(high["192.0.2.10"]["source_count"], 2)
-        self.assertEqual(high["192.0.2.10"]["updated_at"], "2026-01-02T00:00:00Z")
-        self.assertEqual(self.db.stats()["total"], 6)
+        self.assertEqual(high, {})
+        medium = {item["value"]: item for item in self.db.query(level="Medium")}
+        self.assertEqual(medium["https://login.example/Account?A=1"]["source_count"], 1)
+        self.assertEqual(medium["https://login.example/Account?A=1"]["updated_at"], "2026-01-02T00:00:00Z")
+        self.assertEqual(self.db.stats()["total"], 9)
         self.assertEqual(self.db.stats()["levels"]["Critical"], 0)
 
     def test_failure_preserves_good_snapshot_and_timestamp(self):
         collect(self.db, demo=True)
-        before = self.db.query(level="Critical")[0]
+        before = next(row for row in self.db.query(level="High") if row["type"] == "url")
         def failing_loader(feed):
             raise FeedError("temporary unavailability")
         result = collect(self.db, sources=[SOURCES[0]], loader=failing_loader)
-        after = self.db.query(level="Critical")[0]
+        after = next(row for row in self.db.query(level="High") if row["type"] == "url")
         self.assertEqual(result.exit_code, 1)
         self.assertEqual((after["source_count"], after["updated_at"]),
                          (before["source_count"], before["updated_at"]))
@@ -51,21 +59,25 @@ class CollectionTests(unittest.TestCase):
 
     def test_failed_first_source_does_not_stop_other_sources(self):
         def loader(feed):
-            if "blocklist.de" in feed.url:
+            if feed.kind == "phishtank":
                 raise FeedError("unavailable")
-            return "bad.example" if feed.kind == "domain" else "192.0.2.10"
+            return (Path(__file__).resolve().parent.parent / "examples" / "feeds" / feed.demo_file).read_text(encoding="utf-8")
         result = collect(self.db, loader=loader)
         self.assertEqual((result.succeeded, result.failed, result.exit_code), (2, 1, 2))
         self.assertEqual(self.db.query(level="High")[0]["source_count"], 2)
 
     def test_provider_with_two_feeds_is_updated_atomically(self):
-        collect(self.db, demo=True)
+        source = Source("test", "Synthetic multi-feed source", (
+            Feed("ip", "https://example.test/ip", "ip", ""),
+            Feed("domain", "https://example.test/domain", "domain", ""),
+        ))
+        collect(self.db, sources=[source], loader=lambda feed: "bad.example" if feed.kind == "domain" else "192.0.2.1")
         before = self.db.stats()["levels"]
         def loader(feed):
             if feed.kind == "domain":
                 raise FeedError("domain feed unavailable")
             return "203.0.113.7"
-        collect(self.db, sources=[SOURCES[2]], loader=loader)
+        collect(self.db, sources=[source], loader=loader)
         self.assertEqual(self.db.stats()["levels"], before)
         self.assertIsNone(self.db.conn.execute("SELECT 1 FROM indicators WHERE value='203.0.113.7'").fetchone())
 
@@ -107,14 +119,14 @@ class CollectionTests(unittest.TestCase):
         collect(self.db, demo=True)
         self.db.record_failure(SOURCES[0], "timeout")
         collect(self.db, sources=[SOURCES[0]], demo=True)
-        source = self.db.stats()["sources"][0]
+        source = next(row for row in self.db.stats()["sources"] if row["id"] == SOURCES[0].id)
         self.assertEqual(source["status"], "ok")
         self.assertIsNone(source["error"])
 
     def test_sql_value_is_parameterized(self):
         collect(self.db, demo=True)
         self.assertEqual(self.db.query(level="High' OR 1=1 --"), [])
-        self.assertEqual(self.db.stats()["total"], 7)
+        self.assertEqual(self.db.stats()["total"], 11)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -16,16 +17,18 @@ class CLITests(unittest.TestCase):
 
     def run_cli(self, script, *args):
         return subprocess.run([sys.executable, str(ROOT / script), "--db", str(self.db), *args],
-                              capture_output=True, text=True, encoding="utf-8", cwd=ROOT)
+                              capture_output=True, text=True, encoding="utf-8", cwd=ROOT,
+                              env={**os.environ, "PYTHONIOENCODING": "utf-8"})
 
     def test_demo_query_and_json_export(self):
         result = self.run_cli("collect.py", "--demo")
         self.assertEqual(result.returncode, 0, result.stderr)
-        result = self.run_cli("ioc.py", "--level", "cRiTiCaL", "--format", "json")
+        result = self.run_cli("ioc.py", "--level", "hIgH", "--format", "json")
         self.assertEqual(result.returncode, 0, result.stderr)
         rows = json.loads(result.stdout)
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["source_count"], 3)
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(all(row["source_count"] == 2 for row in rows))
+        self.assertEqual({row["type"] for row in rows}, {"url", "sha256", "md5"})
         self.assertNotIn("WARNING", result.stdout)
 
     def test_csv_file_export(self):
@@ -34,9 +37,15 @@ class CLITests(unittest.TestCase):
         result = self.run_cli("ioc.py", "--level", "high", "--format", "csv", "--output", str(output))
         self.assertEqual(result.returncode, 0, result.stderr)
         text = output.read_text(encoding="utf-8")
-        self.assertIn("192.0.2.20", text)
-        self.assertIn("2001:db8::1", text)
-        self.assertEqual(len(text.splitlines()), 3)
+        self.assertIn("https://login.example/Account?A=1", text)
+        self.assertIn("a" * 64, text)
+        self.assertEqual(len(text.splitlines()), 4)
+
+    def test_critical_can_be_empty_with_disjoint_provider_types(self):
+        self.run_cli("collect.py", "--demo")
+        result = self.run_cli("ioc.py", "--level", "critical", "--format", "json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), [])
 
     def test_missing_database_does_not_create_file(self):
         result = self.run_cli("ioc.py", "--level", "medium")

@@ -14,6 +14,7 @@ from typing import TextIO
 
 from .collector import collect
 from .database import Database
+from .sources import SOURCES
 
 DEFAULT_DB = Path("data/iocs.sqlite3")
 FIELDS = ("value", "type", "source_count", "level", "sources", "updated_at")
@@ -49,6 +50,9 @@ def collect_main(argv: list[str] | None = None) -> int:
     path = args.db or (Path("data/demo.sqlite3") if args.demo else DEFAULT_DB)
     try:
         with Database(path, dataset="demo" if args.demo else "live") as db:
+            retired = db.synchronize_sources(SOURCES)
+            if retired:
+                logging.info("Removed previous source configuration: %s", ", ".join(retired))
             if args.demo:
                 logging.warning("DEMO: synthetic indicators, no network requests")
             result = collect(db, demo=args.demo, timeout=args.timeout, retries=args.retries)
@@ -135,6 +139,8 @@ def query_main(argv: list[str] | None = None) -> int:
             # Keep the result and its source details consistent during a concurrent collection.
             db.conn.execute("BEGIN")
             stats = db.stats()
+            if db.schema_version == "1":
+                logging.warning("Previous source configuration: run collect.py to migrate with a v1 backup")
             if db.dataset == "demo":
                 logging.warning("DEMO database: synthetic indicators")
             failed = [s["id"] for s in stats["sources"] if s["status"] == "error"]

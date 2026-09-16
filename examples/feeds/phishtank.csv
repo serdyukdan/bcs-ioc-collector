@@ -1,0 +1,6 @@
+phish_id,url,phish_detail_url,submission_time,verified,verification_time,online,target
+1,hxxps://Login[.]Example/Account?A=1,https://example.test/report/1,2026-09-01T00:00:00Z,yes,2026-09-01T01:00:00Z,yes,Demo
+2,https://billing.example/pay,https://example.test/report/2,2026-09-01T00:00:00Z,yes,2026-09-01T01:00:00Z,yes,Demo
+3,https://login.example/Account?A=1,https://example.test/report/3,2026-09-01T00:00:00Z,yes,2026-09-01T01:00:00Z,yes,Demo
+4,https://unverified.example/,https://example.test/report/4,2026-09-01T00:00:00Z,no,,yes,Demo
+5,https://offline.example/,https://example.test/report/5,2026-09-01T00:00:00Z,yes,2026-09-01T01:00:00Z,no,Demo

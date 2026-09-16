@@ -2,11 +2,16 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
+import logging
 import sqlite3
 from typing import Iterable
+from uuid import uuid4
 
 from .normalize import Indicator
 from .sources import Source
+
+LOGGER = logging.getLogger(__name__)
+SCHEMA_VERSION = "2"
 
 
 SCHEMA = """
@@ -23,7 +28,7 @@ CREATE TABLE IF NOT EXISTS sources (
 );
 CREATE TABLE IF NOT EXISTS indicators (
     id INTEGER PRIMARY KEY,
-    type TEXT NOT NULL CHECK (type IN ('ipv4', 'ipv6', 'domain')),
+    type TEXT NOT NULL CHECK (type IN ('ipv4', 'ipv6', 'domain', 'url', 'ip_port', 'md5', 'sha1', 'sha256')),
     value TEXT NOT NULL,
     source_count INTEGER NOT NULL DEFAULT 1 CHECK (source_count >= 1),
     level TEXT GENERATED ALWAYS AS (
@@ -62,24 +67,94 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.execute("PRAGMA busy_timeout = 30000")
         try:
-            if not readonly:
+            initialized = self.conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata'").fetchone()
+            if not initialized and not readonly:
+                if self.conn.execute("SELECT 1 FROM sqlite_master WHERE type='table'").fetchone():
+                    raise ValueError("Not an IoC database; existing tables will not be overwritten")
                 self.conn.execute("PRAGMA journal_mode = WAL")
                 self.conn.executescript(SCHEMA)
                 with self.conn:
-                    self.conn.execute("INSERT OR IGNORE INTO metadata VALUES ('schema_version', '1')")
+                    self.conn.execute("INSERT INTO metadata VALUES ('schema_version', ?)", (SCHEMA_VERSION,))
                     if dataset:
                         self.conn.execute("INSERT OR IGNORE INTO metadata VALUES ('dataset', ?)",
                                           (dataset,))
             version = self.conn.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
-            if not version or version[0] != "1":
+            if not version or version[0] not in {"1", SCHEMA_VERSION}:
                 raise ValueError("Unsupported database schema")
+            self.schema_version = version[0]
             row = self.conn.execute("SELECT value FROM metadata WHERE key='dataset'").fetchone()
             self.dataset = row[0] if row else "unspecified"
             if dataset and dataset != self.dataset:
                 raise ValueError("Demo and live data must use separate database files")
+            if not readonly:
+                if self.schema_version == "1":
+                    self._migrate_v1()
+                self.conn.execute("PRAGMA journal_mode = WAL")
         except Exception:
             self.conn.close()
             raise
+
+    def _migrate_v1(self) -> None:
+        """Back up v1, widen the type constraint, preserve IDs and all links."""
+        backup_path = self.path.with_name(self.path.name + f".v1-{uuid4().hex[:8]}.bak")
+        # Exclusive creation avoids accidentally replacing an existing backup.
+        with backup_path.open("xb"):
+            pass
+        backup = sqlite3.connect(backup_path)
+        try:
+            self.conn.backup(backup)
+        finally:
+            backup.close()
+        LOGGER.info("Schema v1 backup saved: %s", backup_path)
+        self.conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            self.conn.execute("BEGIN IMMEDIATE")
+            table_sql = SCHEMA.split("CREATE TABLE IF NOT EXISTS indicators (", 1)[1].split(";", 1)[0]
+            self.conn.execute("CREATE TABLE indicators_v2 (" + table_sql)
+            self.conn.execute("""
+                INSERT INTO indicators_v2(id,type,value,source_count,first_seen,updated_at)
+                SELECT id,type,value,source_count,first_seen,updated_at FROM indicators
+            """)
+            self.conn.execute("DROP TABLE indicators")
+            self.conn.execute("ALTER TABLE indicators_v2 RENAME TO indicators")
+            self.conn.execute("CREATE INDEX indicators_by_level ON indicators(level,type,value)")
+            self.conn.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (SCHEMA_VERSION,))
+            if self.conn.execute("PRAGMA foreign_key_check").fetchone():
+                raise ValueError("Foreign key check failed during database migration")
+            self.conn.commit()
+            self.schema_version = SCHEMA_VERSION
+        except Exception:
+            self.conn.rollback()
+            raise
+        finally:
+            self.conn.execute("PRAGMA foreign_keys = ON")
+
+    def synchronize_sources(self, sources: Iterable[Source]) -> list[str]:
+        """Retire removed datasets so their observations cannot inflate priority.
+
+        Called for a full CLI collection, never for a partial provider retry.
+        The v1 backup retains data from the previous source configuration.
+        """
+        active = {source.id for source in sources}
+        if not active:
+            raise ValueError("At least one source must be configured")
+        obsolete = [row[0] for row in self.conn.execute("SELECT id FROM sources") if row[0] not in active]
+        if not obsolete:
+            return []
+        with self.conn:
+            self.conn.executemany("DELETE FROM observations WHERE source_id=?", ((item,) for item in obsolete))
+            self.conn.executemany("DELETE FROM sources WHERE id=?", ((item,) for item in obsolete))
+            self.conn.execute("""DELETE FROM indicators WHERE NOT EXISTS
+                               (SELECT 1 FROM observations o WHERE o.indicator_id=indicators.id)""")
+            self.conn.execute("""
+                UPDATE indicators SET source_count=(
+                    SELECT COUNT(*) FROM observations o WHERE o.indicator_id=indicators.id
+                ),updated_at=? WHERE source_count != (
+                    SELECT COUNT(*) FROM observations o WHERE o.indicator_id=indicators.id
+                )
+            """, (utc_now(),))
+        return obsolete
 
     def __enter__(self):
         return self

@@ -1,0 +1,33 @@
+{
+  "query_status": "ok",
+  "data": [
+    {
+      "ioc": "https://login.example/Account?A=1",
+      "ioc_type": "url"
+    },
+    {
+      "ioc": "HTTPS://LOGIN[.]EXAMPLE:443/Account?A=1",
+      "ioc_type": "url"
+    },
+    {
+      "ioc": "c2[.]example",
+      "ioc_type": "domain"
+    },
+    {
+      "ioc": "192.0.2.10:0443",
+      "ioc_type": "ip:port"
+    },
+    {
+      "ioc": "[2001:0DB8:0:0:0:0:0:1]:443",
+      "ioc_type": "ip:port"
+    },
+    {
+      "ioc": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "ioc_type": "sha256_hash"
+    },
+    {
+      "ioc": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "ioc_type": "md5_hash"
+    }
+  ]
+}
