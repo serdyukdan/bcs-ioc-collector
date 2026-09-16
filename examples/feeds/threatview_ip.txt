@@ -1,0 +1,6 @@
+# Synthetic IP feed; documentation addresses only.
+192.0.2.10
+192.0.2.20
+2001:0DB8:0:0:0:0:0:1
+203.0.113.7
+192.0.2.10

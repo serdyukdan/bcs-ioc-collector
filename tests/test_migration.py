@@ -60,7 +60,7 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(db.query(level="High")[0]["source_count"], 2)
             self.assertEqual(db.synchronize_sources(SOURCES), ["old"])
             row = db.query(level="Medium")[0]
-            self.assertEqual(row["sources"], ["threatfox"])
+            self.assertEqual(row["sources"], ["threatview"])
             self.assertEqual(row["source_count"], 1)
             self.assertEqual(db.conn.execute("PRAGMA foreign_key_check").fetchall(), [])
 
@@ -76,6 +76,24 @@ class MigrationTests(unittest.TestCase):
         with Database(self.path, readonly=True) as db:
             self.assertEqual(db.schema_version, "1")
             self.assertEqual(db.stats()["total"], 1)
+
+    def test_source_change_backs_up_v2_before_removing_old_data(self):
+        with Database(self.path, dataset="live") as db:
+            self.assertEqual(db.synchronize_sources(SOURCES), ["old"])
+            self.assertEqual(db.synchronize_sources(SOURCES), [])
+            self.assertEqual(db.stats()["total"], 0)
+        backups = list(self.path.parent.glob("*.sources-*.bak"))
+        self.assertEqual(len(backups), 1)
+        with Database(backups[0], readonly=True) as original:
+            self.assertEqual(original.schema_version, "2")
+            self.assertEqual(original.stats()["total"], 1)
+            self.assertEqual(original.query(level="Medium")[0]["sources"], ["old"])
+
+    def test_failed_source_change_backup_preserves_current_sources(self):
+        with Database(self.path, dataset="live") as db:
+            with patch.object(db, "_backup", side_effect=OSError("disk full")), self.assertRaises(OSError):
+                db.synchronize_sources(SOURCES)
+            self.assertEqual(db.query(level="Medium")[0]["sources"], ["old"])
 
 
 if __name__ == "__main__":

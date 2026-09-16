@@ -28,7 +28,7 @@ class CLITests(unittest.TestCase):
         rows = json.loads(result.stdout)
         self.assertEqual(len(rows), 3)
         self.assertTrue(all(row["source_count"] == 2 for row in rows))
-        self.assertEqual({row["type"] for row in rows}, {"url", "sha256", "md5"})
+        self.assertEqual({row["type"] for row in rows}, {"ipv4", "ipv6"})
         self.assertNotIn("WARNING", result.stdout)
 
     def test_csv_file_export(self):
@@ -37,8 +37,8 @@ class CLITests(unittest.TestCase):
         result = self.run_cli("ioc.py", "--level", "high", "--format", "csv", "--output", str(output))
         self.assertEqual(result.returncode, 0, result.stderr)
         text = output.read_text(encoding="utf-8")
-        self.assertIn("https://login.example/Account?A=1", text)
-        self.assertIn("a" * 64, text)
+        self.assertIn("192.0.2.10", text)
+        self.assertIn("2001:db8::1", text)
         self.assertEqual(len(text.splitlines()), 4)
 
     def test_critical_can_be_empty_with_disjoint_provider_types(self):

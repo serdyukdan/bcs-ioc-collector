@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import http.client
 import io
-import json
 import logging
 import ssl
 import time
@@ -53,8 +52,8 @@ class ParsedFeed:
 def parse_feed(text: str, kind: str) -> ParsedFeed:
     if any(tag in text[:512].lower() for tag in ("<!doctype html", "<html", "<body")):
         raise FeedError("HTML received instead of a feed")
-    if kind in {"phishtank", "threatfox", "malwarebazaar"}:
-        return parse_structured_feed(text, kind)
+    if kind == "phishtank":
+        return parse_phishtank(text)
     candidates = []
     for line in text.lstrip("\ufeff").splitlines():
         line = line.strip()
@@ -64,8 +63,7 @@ def parse_feed(text: str, kind: str) -> ParsedFeed:
     return _normalize_candidates(candidates)
 
 
-def _normalize_candidates(candidates: list[tuple[str, str]], *, skipped: int = 0,
-                          allow_empty: bool = False) -> ParsedFeed:
+def _normalize_candidates(candidates: list[tuple[str, str]], *, skipped: int = 0) -> ParsedFeed:
     indicators: set[Indicator] = set()
     rows = invalid = duplicates = 0
     for value, kind in candidates:
@@ -80,7 +78,7 @@ def _normalize_candidates(candidates: list[tuple[str, str]], *, skipped: int = 0
         indicators.add(indicator)
     # These feeds are normally nonempty. Never erase a known snapshot after a
     # silent server error, an empty response or an incompatible format change.
-    if not indicators and not (allow_empty and not rows):
+    if not indicators:
         raise FeedError("Empty feed or no valid indicators; previous snapshot preserved")
     if rows and invalid / rows > 0.10:
         raise FeedError(f"Too many invalid rows: {invalid}/{rows} (>10%)")
@@ -88,7 +86,7 @@ def _normalize_candidates(candidates: list[tuple[str, str]], *, skipped: int = 0
 
 
 def _csv_records(text: str, required: set[str]) -> list[dict]:
-    """MalwareBazaar prefixes its header with '# '; metadata is not IoC data."""
+    """Read a strict CSV table; metadata columns are not IoC data."""
     stream = io.StringIO(text.lstrip("\ufeff"), newline="")
     header = None
     for line in stream:
@@ -111,45 +109,21 @@ def _csv_records(text: str, required: set[str]) -> list[dict]:
     return records
 
 
-def parse_structured_feed(text: str, kind: str) -> ParsedFeed:
+def parse_phishtank(text: str) -> ParsedFeed:
     candidates = []
     skipped = 0
     try:
-        if kind == "phishtank":
-            records = _csv_records(text, {"url", "verified", "online"})
-            for row in records:
-                if row["verified"].lower() not in {"yes", "no"} or row["online"].lower() not in {"yes", "no"}:
-                    raise FeedError("Invalid PhishTank verification/status field")
-                if row["verified"].lower() != "yes" or row["online"].lower() != "yes":
-                    skipped += 1
-                    continue
-                candidates.append((row["url"], "url"))
-        elif kind == "threatfox":
-            document = json.loads(text)
-            if not isinstance(document, dict):
-                raise FeedError("ThreatFox response must be a JSON object")
-            status = document.get("query_status")
-            if status == "no_result":
-                return _normalize_candidates([], allow_empty=True)
-            if status != "ok" or not isinstance(document.get("data"), list):
-                # Do not echo server payloads: they may contain credentials.
-                raise FeedError("ThreatFox API did not return a successful dataset (check key and quota)")
-            aliases = {"ip:port": "ip_port", "md5_hash": "md5", "sha1_hash": "sha1",
-                       "sha256_hash": "sha256", "ip": "ip", "ipv4": "ip", "ipv6": "ip",
-                       "domain": "domain", "url": "url"}
-            for row in document["data"]:
-                if not isinstance(row, dict) or "ioc" not in row or not isinstance(row.get("ioc_type"), str):
-                    raise FeedError("Invalid ThreatFox record structure")
-                candidates.append((row["ioc"], aliases.get(row["ioc_type"], "unsupported")))
-            return _normalize_candidates(candidates, allow_empty=True)
-        else:
-            records = _csv_records(text, {"sha256_hash", "sha1_hash", "md5_hash"})
-            for row in records:
-                for algorithm in ("sha256", "sha1", "md5"):
-                    candidates.append((row[algorithm + "_hash"], algorithm))
+        records = _csv_records(text, {"url", "verified", "online"})
+        for row in records:
+            if row["verified"].lower() not in {"yes", "no"} or row["online"].lower() not in {"yes", "no"}:
+                raise FeedError("Invalid PhishTank verification/status field")
+            if row["verified"].lower() != "yes" or row["online"].lower() != "yes":
+                skipped += 1
+                continue
+            candidates.append((row["url"], "url"))
         return _normalize_candidates(candidates, skipped=skipped)
-    except (csv.Error, json.JSONDecodeError) as exc:
-        raise FeedError(f"Malformed {kind} data ({type(exc).__name__})") from None
+    except csv.Error:
+        raise FeedError("Malformed PhishTank CSV") from None
 
 
 def _retry_delay(retry_after: str | None, attempt: int) -> float:

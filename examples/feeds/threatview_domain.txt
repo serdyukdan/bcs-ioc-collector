@@ -1,0 +1,4 @@
+# Synthetic domain feed.
+C2.Example.
+c2.example
+payload.example

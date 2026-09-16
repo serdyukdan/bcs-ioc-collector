@@ -38,9 +38,7 @@ def collect(db: Database, *, sources: Iterable[Source] = SOURCES,
                 elif demo:
                     text = (DEMO_DIR / feed.demo_file).read_text(encoding="utf-8-sig")
                 else:
-                    url, headers, data = feed.request_parameters()
-                    text = download_text(url, timeout=timeout, retries=retries,
-                                         headers=headers, data=data)
+                    text = download_text(feed.url, timeout=timeout, retries=retries)
                 parsed = parse_feed(text, feed.kind)
                 duplicates += parsed.duplicates + len(indicators & parsed.indicators)
                 indicators.update(parsed.indicators)

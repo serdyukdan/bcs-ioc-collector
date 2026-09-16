@@ -95,9 +95,8 @@ class Database:
             self.conn.close()
             raise
 
-    def _migrate_v1(self) -> None:
-        """Back up v1, widen the type constraint, preserve IDs and all links."""
-        backup_path = self.path.with_name(self.path.name + f".v1-{uuid4().hex[:8]}.bak")
+    def _backup(self, reason: str) -> Path:
+        backup_path = self.path.with_name(self.path.name + f".{reason}-{uuid4().hex[:8]}.bak")
         # Exclusive creation avoids accidentally replacing an existing backup.
         with backup_path.open("xb"):
             pass
@@ -106,7 +105,12 @@ class Database:
             self.conn.backup(backup)
         finally:
             backup.close()
-        LOGGER.info("Schema v1 backup saved: %s", backup_path)
+        LOGGER.info("Database backup saved: %s", backup_path)
+        return backup_path
+
+    def _migrate_v1(self) -> None:
+        """Back up v1, widen the type constraint, preserve IDs and all links."""
+        self._backup("v1")
         self.conn.execute("PRAGMA foreign_keys = OFF")
         try:
             self.conn.execute("BEGIN IMMEDIATE")
@@ -134,7 +138,7 @@ class Database:
         """Retire removed datasets so their observations cannot inflate priority.
 
         Called for a full CLI collection, never for a partial provider retry.
-        The v1 backup retains data from the previous source configuration.
+        Back up before removing any previous source configuration.
         """
         active = {source.id for source in sources}
         if not active:
@@ -142,6 +146,7 @@ class Database:
         obsolete = [row[0] for row in self.conn.execute("SELECT id FROM sources") if row[0] not in active]
         if not obsolete:
             return []
+        self._backup("sources")
         with self.conn:
             self.conn.executemany("DELETE FROM observations WHERE source_id=?", ((item,) for item in obsolete))
             self.conn.executemany("DELETE FROM sources WHERE id=?", ((item,) for item in obsolete))

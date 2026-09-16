@@ -1,0 +1,4 @@
+# Synthetic MD5 feed, not hashes of malware samples.
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

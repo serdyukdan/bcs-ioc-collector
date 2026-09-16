@@ -24,9 +24,9 @@ class CollectionTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0)
             self.assertEqual(self.db.stats()["levels"], {"Critical": 0, "High": 3, "Medium": 8})
             self.assertEqual(self.db.stats()["total"], 11)
-        url = next(row for row in self.db.query(level="High") if row["type"] == "url")
-        self.assertEqual(url["sources"], ["phishtank", "threatfox"])
-        self.assertEqual(url["value"], "https://login.example/Account?A=1")
+        ip = self.db.query(level="High")[0]
+        self.assertEqual(ip["sources"], ["blocklist_de", "threatview"])
+        self.assertEqual(ip["value"], "192.0.2.10")
 
     def test_all_three_priority_levels_without_fabricating_provider_data(self):
         indicator = normalize("192.0.2.10")
@@ -40,18 +40,18 @@ class CollectionTests(unittest.TestCase):
         high = {item["value"]: item for item in self.db.query(level="High")}
         self.assertEqual(high, {})
         medium = {item["value"]: item for item in self.db.query(level="Medium")}
-        self.assertEqual(medium["https://login.example/Account?A=1"]["source_count"], 1)
-        self.assertEqual(medium["https://login.example/Account?A=1"]["updated_at"], "2026-01-02T00:00:00Z")
-        self.assertEqual(self.db.stats()["total"], 9)
+        self.assertEqual(medium["192.0.2.10"]["source_count"], 1)
+        self.assertEqual(medium["192.0.2.10"]["updated_at"], "2026-01-02T00:00:00Z")
+        self.assertEqual(self.db.stats()["total"], 7)
         self.assertEqual(self.db.stats()["levels"]["Critical"], 0)
 
     def test_failure_preserves_good_snapshot_and_timestamp(self):
         collect(self.db, demo=True)
-        before = next(row for row in self.db.query(level="High") if row["type"] == "url")
+        before = self.db.query(level="High")[0]
         def failing_loader(feed):
             raise FeedError("temporary unavailability")
-        result = collect(self.db, sources=[SOURCES[0]], loader=failing_loader)
-        after = next(row for row in self.db.query(level="High") if row["type"] == "url")
+        result = collect(self.db, sources=[SOURCES[2]], loader=failing_loader)
+        after = self.db.query(level="High")[0]
         self.assertEqual(result.exit_code, 1)
         self.assertEqual((after["source_count"], after["updated_at"]),
                          (before["source_count"], before["updated_at"]))

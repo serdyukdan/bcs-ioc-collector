@@ -1,6 +1,5 @@
 import io
 from contextlib import redirect_stdout, redirect_stderr
-import json
 import os
 from pathlib import Path
 import unittest
@@ -67,26 +66,24 @@ class SourceParserTests(unittest.TestCase):
         self.assertEqual({item.type for item in result.indicators}, {"url"})
         self.assertFalse(any("report" in item.value for item in result.indicators))
 
-    def test_malwarebazaar_commented_header_hashes_and_footer(self):
-        result = parse_feed((FIXTURES / "malwarebazaar.csv").read_text(), "malwarebazaar")
-        self.assertEqual(len(result.indicators), 6)
-        self.assertEqual({item.type for item in result.indicators}, {"sha256", "sha1", "md5"})
+    def test_threatview_typed_lists_normalize_and_deduplicate(self):
+        for file, kind, unique in (("threatview_ip.txt", "ip", 4),
+                                   ("threatview_domain.txt", "domain", 2),
+                                   ("threatview_md5.txt", "md5", 2)):
+            with self.subTest(kind=kind):
+                result = parse_feed((FIXTURES / file).read_text(), kind)
+                self.assertEqual((len(result.indicators), result.duplicates), (unique, 1))
 
-    def test_threatfox_preserves_types_and_deduplicates(self):
-        result = parse_feed((FIXTURES / "threatfox.json").read_text(), "threatfox")
-        self.assertEqual((len(result.indicators), result.duplicates), (6, 1))
-        self.assertEqual({item.type for item in result.indicators}, {"url", "domain", "ip_port", "sha256", "md5"})
+    def test_blocklist_preserves_both_ip_versions(self):
+        result = parse_feed((FIXTURES / "blocklist_de.txt").read_text(), "ip")
+        self.assertEqual(len(result.indicators), 4)
+        self.assertEqual({item.type for item in result.indicators}, {"ipv4", "ipv6"})
 
-    def test_api_error_is_not_an_empty_successful_snapshot(self):
-        for document in ({"query_status": "no_api_key"}, {"query_status": "ok", "data": {}},
-                         {"query_status": "ok", "data": [None]}, [], {}):
-            with self.subTest(document=document), self.assertRaises(FeedError):
-                parse_feed(json.dumps(document), "threatfox")
-        self.assertEqual(parse_feed('{"query_status":"no_result"}', "threatfox").indicators, set())
-
-    def test_unknown_threatfox_type_fails_quality_check(self):
-        with self.assertRaises(FeedError):
-            parse_feed('{"query_status":"ok","data":[{"ioc":"test","ioc_type":"new-type"}]}', "threatfox")
+    def test_empty_or_error_responses_cannot_erase_a_snapshot(self):
+        for kind in ("ip", "domain", "md5", "phishtank"):
+            for text in ("", "# temporary maintenance", '<html>error</html>', '{"error":"denied"}'):
+                with self.subTest(kind=kind, text=text), self.assertRaises(FeedError):
+                    parse_feed(text, kind)
 
     def test_broken_csv_does_not_clear_snapshot(self):
         for text in ("url,verified\nhttps://example.test/,yes\n", "url,verified,online\na,yes\n",
@@ -99,37 +96,24 @@ class SourceParserTests(unittest.TestCase):
         self.assertEqual(next(iter(parsed.indicators)).value, "https://example.test/?a=1,2")
 
 
-class CredentialTests(unittest.TestCase):
-    def test_cli_partial_success_without_keys_keeps_public_source(self):
+class PublicSourceTests(unittest.TestCase):
+    def test_live_cli_collects_all_three_sources_without_environment_credentials(self):
         with TemporaryDirectory() as temporary:
             path = Path(temporary) / "live.sqlite3"
-            data = (FIXTURES / "phishtank.csv").read_text()
-            with patch.dict(os.environ, {}, clear=True), patch("ioc_collector.collector.download_text", return_value=data) as download:
+            fixtures = {feed.url: (FIXTURES / feed.demo_file).read_text(encoding="utf-8")
+                        for source in SOURCES for feed in source.feeds}
+            def loader(url, **kwargs):
+                self.assertEqual(set(kwargs), {"timeout", "retries"})
+                return fixtures[url]
+            with patch.dict(os.environ, {}, clear=True), patch("ioc_collector.collector.download_text", side_effect=loader) as download:
                 with patch("ioc_collector.cli.configure_logging"), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                     result = collect_main(["--db", str(path)])
-                self.assertEqual(result, 2)
-                self.assertEqual(download.call_count, 1)
+                self.assertEqual(result, 0)
+                self.assertEqual(download.call_count, 5)
             with Database(path, readonly=True) as db:
-                self.assertEqual(db.stats()["total"], 2)
+                self.assertEqual(db.stats()["total"], 11)
                 statuses = {source["id"]: source["status"] for source in db.stats()["sources"]}
-                self.assertEqual(statuses, {"phishtank": "ok", "threatfox": "error", "malwarebazaar": "error"})
-
-    def test_missing_abuse_key_fails_before_network_and_phishtank_still_works(self):
-        with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(SOURCES[0].feeds[0].request_parameters()[0],
-                             "https://data.phishtank.com/data/online-valid.csv")
-            for source in SOURCES[1:]:
-                with self.assertRaisesRegex(ValueError, "ABUSECH_AUTH_KEY"):
-                    source.feeds[0].request_parameters()
-
-    def test_correct_authentication_and_payload_per_source(self):
-        with patch.dict(os.environ, {"ABUSECH_AUTH_KEY": "test-key", "PHISHTANK_APP_KEY": "test-app"}):
-            self.assertIn("/test-app/online-valid.csv", SOURCES[0].feeds[0].request_parameters()[0])
-            url, headers, data = SOURCES[1].feeds[0].request_parameters()
-            self.assertEqual(headers["Auth-Key"], "test-key")
-            self.assertEqual(json.loads(data), {"query": "get_iocs", "days": 7})
-            self.assertEqual(SOURCES[2].feeds[0].request_parameters()[0],
-                             "https://mb-api.abuse.ch/v2/files/exports/test-key/recent.csv")
+                self.assertEqual(statuses, {"phishtank": "ok", "threatview": "ok", "blocklist_de": "ok"})
 
     def test_key_not_leaked_in_http_network_errors_or_retry_logs(self):
         key = "secret-for-test"

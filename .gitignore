@@ -6,4 +6,5 @@ data/
 *.sqlite3-wal
 *.sqlite3-shm
 *.sqlite3.v1-*.bak
+*.sqlite3.sources-*.bak
 .env
