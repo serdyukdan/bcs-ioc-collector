@@ -1,0 +1,1 @@
+# No third-party dependencies. Python 3.10+ with the standard sqlite3 module.

@@ -1,0 +1,5 @@
+# SYNTHETIC TEST DATA ONLY: documentation IP ranges, not threat intelligence.
+192.0.2.10
+192.0.2.20
+192.0.2.30
+2001:db8::1

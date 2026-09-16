@@ -1,0 +1,59 @@
+OFFLINE DEMO: synthetic documentation addresses; no live threat data.
+
+$ python collect.py --demo
+Sources: ok=3 failed=0
+Database: data\demo.sqlite3 (demo)
+Total: 7
+Critical=1 High=2 Medium=4
+
+$ python ioc.py --db data/demo.sqlite3 --level critical
+value	type	source_count	level	sources	updated_at
+192.0.2.10	ipv4	3	Critical	blocklist_de,cins_army,threatview	2026-09-16T17:18:15.152682Z
+
+$ python ioc.py --db data/demo.sqlite3 --level high
+value	type	source_count	level	sources	updated_at
+192.0.2.20	ipv4	2	High	blocklist_de,cins_army	2026-09-16T17:18:15.146669Z
+2001:db8::1	ipv6	2	High	blocklist_de,threatview	2026-09-16T17:18:15.152682Z
+
+$ python ioc.py --db data/demo.sqlite3 --level medium
+value	type	source_count	level	sources	updated_at
+bad.example	domain	1	Medium	threatview	2026-09-16T17:18:15.152682Z
+xn--e1afmkfd.test	domain	1	Medium	threatview	2026-09-16T17:18:15.152682Z
+192.0.2.30	ipv4	1	Medium	blocklist_de	2026-09-16T17:18:15.144165Z
+198.51.100.40	ipv4	1	Medium	cins_army	2026-09-16T17:18:15.146669Z
+
+$ python ioc.py --db data/demo.sqlite3 --level critical --format json
+[
+  {
+    "value": "192.0.2.10",
+    "type": "ipv4",
+    "source_count": 3,
+    "level": "Critical",
+    "updated_at": "2026-09-16T17:18:15.152682Z",
+    "sources": [
+      "blocklist_de",
+      "cins_army",
+      "threatview"
+    ],
+    "source_details": [
+      {
+        "id": "blocklist_de",
+        "status": "ok",
+        "last_success": "2026-09-16T17:18:15.144165Z",
+        "last_seen": "2026-09-16T17:18:15.144165Z"
+      },
+      {
+        "id": "cins_army",
+        "status": "ok",
+        "last_success": "2026-09-16T17:18:15.146669Z",
+        "last_seen": "2026-09-16T17:18:15.146669Z"
+      },
+      {
+        "id": "threatview",
+        "status": "ok",
+        "last_success": "2026-09-16T17:18:15.152682Z",
+        "last_seen": "2026-09-16T17:18:15.152682Z"
+      }
+    ]
+  }
+]

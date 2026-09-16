@@ -1,0 +1,5 @@
+# SYNTHETIC TEST DATA ONLY: reserved example/test domain names.
+Bad[.]Example.
+bad.example
+пример.test
+xn--e1afmkfd.test

@@ -1,0 +1,46 @@
+{
+  "dataset": "live",
+  "total": 577163,
+  "levels": {
+    "Critical": 64,
+    "High": 8786,
+    "Medium": 568313
+  },
+  "types": {
+    "domain": 527040,
+    "ipv4": 49394,
+    "ipv6": 729
+  },
+  "sources": [
+    {
+      "id": "blocklist_de",
+      "name": "Blocklist.de",
+      "status": "ok",
+      "last_attempt": "2026-09-16T17:15:10.814233Z",
+      "last_success": "2026-09-16T17:15:10.814233Z",
+      "error": null,
+      "valid_count": 26222,
+      "invalid_count": 0
+    },
+    {
+      "id": "cins_army",
+      "name": "CINS Army",
+      "status": "ok",
+      "last_attempt": "2026-09-16T17:15:12.484822Z",
+      "last_success": "2026-09-16T17:15:12.484822Z",
+      "error": null,
+      "valid_count": 15000,
+      "invalid_count": 0
+    },
+    {
+      "id": "threatview",
+      "name": "ThreatView",
+      "status": "ok",
+      "last_attempt": "2026-09-16T17:15:25.381597Z",
+      "last_success": "2026-09-16T17:15:25.381597Z",
+      "error": null,
+      "valid_count": 544855,
+      "invalid_count": 55
+    }
+  ]
+}
