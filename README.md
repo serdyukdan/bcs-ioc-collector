@@ -277,7 +277,7 @@ HTTP-повторы и запуск CLI.
 Примеры: `examples/demo_run.txt`, `examples/live_run.md`,
 `examples/live_stats.json`. Сетевой пример явно указывает, какие источники
 проверены, и содержит фактическую статистику загрузки.
-Ответы на вопросы ТЗ: [ANSWERS.md](ANSWERS.md).
+Ответы на вопросы ТЗ: [ANSWERS.md](ANSWERS.md) или [документ Word](ANSWERS.docx).
 
 ## Структура
 
