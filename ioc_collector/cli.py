@@ -2,13 +2,16 @@
 
 import argparse
 import csv
+import errno
 import json
 import logging
 import math
+import os
 from pathlib import Path
 import shutil
 import sqlite3
 import sys
+import tempfile
 import textwrap
 from typing import TextIO
 
@@ -22,8 +25,8 @@ FIELDS = ("value", "type", "source_count", "level", "sources", "updated_at")
 
 def nonnegative(value: str) -> int:
     number = int(value)
-    if number < 0:
-        raise argparse.ArgumentTypeError("Expected a nonnegative integer")
+    if not 0 <= number <= 2**63 - 1:
+        raise argparse.ArgumentTypeError("Expected an integer between 0 and 9223372036854775807")
     return number
 
 
@@ -130,11 +133,13 @@ def query_main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     configure_logging()
     try:
-        if args.output and args.output.resolve() in {
-            args.db.resolve(), Path(str(args.db) + "-wal").resolve(),
-            Path(str(args.db) + "-shm").resolve(),
-        }:
-            raise ValueError("Export path must not overwrite the database or its sidecar files")
+        if args.output:
+            protected = (args.db, Path(str(args.db) + "-wal"), Path(str(args.db) + "-shm"))
+            for path in protected:
+                if args.output.resolve() == path.resolve() or (
+                    args.output.exists() and path.exists() and args.output.samefile(path)
+                ):
+                    raise ValueError("Export path must not overwrite the database or its sidecar files")
         with Database(args.db, readonly=True) as db:
             # Keep the result and its source details consistent during a concurrent collection.
             db.conn.execute("BEGIN")
@@ -155,22 +160,51 @@ def query_main(argv: list[str] | None = None) -> int:
                 write_rows(rows, args.format, output)
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
-            with args.output.open("w", encoding="utf-8", newline="") as output:
-                emit(output)
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="",
+                                                 dir=args.output.parent, delete=False) as output:
+                    temporary = Path(output.name)
+                    emit(output)
+                temporary.replace(args.output)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
         else:
-            emit(sys.stdout)
+            try:
+                emit(sys.stdout)
+            except OSError as exc:
+                # Windows may report a closed stdout pipe as EINVAL.
+                if os.name == "nt" and exc.errno == errno.EINVAL:
+                    raise BrokenPipeError from None
+                raise
         if not args.stats:
             logging.info("Shown: %d of %d %s indicators (offset=%d)",
                          len(rows), stats["levels"][args.level], args.level, args.offset)
         return 0
+    except BrokenPipeError:
+        raise
     except (OSError, sqlite3.Error, ValueError) as exc:
         logging.error("%s", exc)
         return 1
 
 
 def run(command) -> None:
+    # Keep redirected output readable regardless of the Windows ANSI code page.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     try:
-        raise SystemExit(command())
-    except BrokenPipeError:
+        result = command()
+        sys.stdout.flush()
+    except OSError as exc:
+        if not isinstance(exc, BrokenPipeError) and not (os.name == "nt" and exc.errno == errno.EINVAL):
+            raise
         # Allow commands such as `python ioc.py ... | head`.
-        raise SystemExit(0) from None
+        with open(os.devnull, "w") as devnull:
+            os.dup2(devnull.fileno(), sys.stdout.fileno())
+        result = 0
+    except KeyboardInterrupt:
+        logging.error("Interrupted")
+        result = 130
+    raise SystemExit(result)

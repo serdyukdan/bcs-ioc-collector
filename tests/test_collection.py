@@ -1,4 +1,5 @@
 from pathlib import Path
+import random
 import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
@@ -128,6 +129,29 @@ class CollectionTests(unittest.TestCase):
         collect(self.db, demo=True)
         self.assertEqual(self.db.query(level="High' OR 1=1 --"), [])
         self.assertEqual(self.db.stats()["total"], 10)
+
+    def test_repeated_snapshot_changes_match_independent_set_model(self):
+        rng = random.Random(17)
+        sources = [Source(f"model_{i}", "Synthetic source", ()) for i in range(3)]
+        pool = [normalize(f"192.0.2.{i}") for i in range(1, 13)]
+        snapshots = {source.id: set() for source in sources}
+        for step in range(100):
+            source = rng.choice(sources)
+            if rng.random() < 0.2:
+                self.db.record_failure(source, "temporary failure")
+            else:
+                snapshot = set(rng.sample(pool, rng.randrange(len(pool) + 1)))
+                self.db.replace_snapshot(source, snapshot)
+                snapshots[source.id] = snapshot
+            expected = {}
+            for indicator in pool:
+                owners = sorted(key for key, snapshot in snapshots.items() if indicator in snapshot)
+                if owners:
+                    level = {1: "Medium", 2: "High", 3: "Critical"}[len(owners)]
+                    expected[indicator.value] = (owners, len(owners), level)
+            actual = {row["value"]: (row["sources"], row["source_count"], row["level"])
+                      for level in ("Medium", "High", "Critical") for row in self.db.query(level=level)}
+            self.assertEqual(actual, expected, f"snapshot step {step}")
 
 
 if __name__ == "__main__":
