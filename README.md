@@ -153,13 +153,22 @@ IPv4 встречается во всех трёх источниках: оди�
 
 ## Команды, вывод и экспорт
 
+Для сбора достаточно запустить `collect.py` без параметров:
+
 ```shell
-python collect.py --db data/custom.sqlite3 --timeout 30 --retries 2
+python collect.py
 python ioc.py --stats
 python ioc.py --level high --limit 20 --offset 0
 python ioc.py --level medium --limit 0 --format json --output data/medium.json
 python ioc.py --level high --format csv --output data/high.csv
 python ioc.py --level medium --format txt --output data/medium.txt
+```
+
+Справка со всеми доступными параметрами вызывается через `--help`:
+
+```shell
+python collect.py --help
+python ioc.py --help
 ```
 
 `--level` принимает Critical, High, Medium без учёта регистра.
